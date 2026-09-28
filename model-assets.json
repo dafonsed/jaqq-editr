@@ -1,0 +1,222 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "group": "speech",
+      "name": "Speech recognition",
+      "path": "speech-small.en/config.json",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/config.json",
+      "source": "Systran/faster-whisper-small.en",
+      "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f",
+      "size": 2657,
+      "hash_type": "git_blob_sha1",
+      "digest": "ced3fd5bbb3e9f7664658065d2d36164712cf1d5"
+    },
+    {
+      "group": "speech",
+      "name": "Speech recognition",
+      "path": "speech-small.en/model.bin",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/model.bin",
+      "source": "Systran/faster-whisper-small.en",
+      "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f",
+      "size": 483545366,
+      "hash_type": "sha256",
+      "digest": "62b2a45b05ee59acb4a5341b33ee35e041395d378d418a18acfe4c9e768ee37a"
+    },
+    {
+      "group": "speech",
+      "name": "Speech recognition",
+      "path": "speech-small.en/tokenizer.json",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/tokenizer.json",
+      "source": "Systran/faster-whisper-small.en",
+      "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f",
+      "size": 2128466,
+      "hash_type": "git_blob_sha1",
+      "digest": "15d7bdf9ba25718ca2504eec6a8f02bc55af0a6a"
+    },
+    {
+      "group": "speech",
+      "name": "Speech recognition",
+      "path": "speech-small.en/vocabulary.txt",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/d1d751a5f8271d482d14ca55d9e2deeebbae577f/vocabulary.txt",
+      "source": "Systran/faster-whisper-small.en",
+      "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f",
+      "size": 422309,
+      "hash_type": "git_blob_sha1",
+      "digest": "ee695b8d3e3c10d488304e04468efec4ca27554a"
+    },
+    {
+      "group": "semantic",
+      "name": "Sentence matching",
+      "path": "semantic-minilm/onnx/model_quantized.onnx",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_quantized.onnx",
+      "source": "Xenova/all-MiniLM-L6-v2",
+      "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+      "size": 22972370,
+      "hash_type": "sha256",
+      "digest": "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1"
+    },
+    {
+      "group": "semantic",
+      "name": "Sentence matching",
+      "path": "semantic-minilm/tokenizer.json",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/tokenizer.json",
+      "source": "Xenova/all-MiniLM-L6-v2",
+      "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+      "size": 711661,
+      "hash_type": "git_blob_sha1",
+      "digest": "c17ed520ed8438736732a54957a69306b8822215"
+    },
+    {
+      "group": "entailment",
+      "name": "Meaning checks",
+      "path": "retake-nli/onnx/model.onnx",
+      "url": "https://huggingface.co/Xenova/nli-deberta-v3-small/resolve/6bc2a55c7c0f7e2bc68de60bb248e523e2612abb/onnx/model.onnx",
+      "source": "Xenova/nli-deberta-v3-small",
+      "revision": "6bc2a55c7c0f7e2bc68de60bb248e523e2612abb",
+      "size": 568030895,
+      "hash_type": "sha256",
+      "digest": "59e082152f6e45f60be35ada23a4bfe57648ea8b7572c068916bec03ff1def11"
+    },
+    {
+      "group": "entailment",
+      "name": "Meaning checks",
+      "path": "retake-nli/tokenizer.json",
+      "url": "https://huggingface.co/Xenova/nli-deberta-v3-small/resolve/6bc2a55c7c0f7e2bc68de60bb248e523e2612abb/tokenizer.json",
+      "source": "Xenova/nli-deberta-v3-small",
+      "revision": "6bc2a55c7c0f7e2bc68de60bb248e523e2612abb",
+      "size": 8656551,
+      "hash_type": "git_blob_sha1",
+      "digest": "9bbea7ec181466567dc3d7dfd8bc69fd537c3f7c"
+    },
+    {
+      "group": "entailment",
+      "name": "Meaning checks",
+      "path": "retake-nli/config.json",
+      "url": "https://huggingface.co/Xenova/nli-deberta-v3-small/resolve/6bc2a55c7c0f7e2bc68de60bb248e523e2612abb/config.json",
+      "source": "Xenova/nli-deberta-v3-small",
+      "revision": "6bc2a55c7c0f7e2bc68de60bb248e523e2612abb",
+      "size": 1037,
+      "hash_type": "git_blob_sha1",
+      "digest": "460baf37cd77537753dfd9615ad676027bd9c92c"
+    },
+    {
+      "group": "editor",
+      "name": "Local editorial review",
+      "path": "editor-qwen/Qwen3-4B-Q4_K_M.gguf",
+      "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf",
+      "source": "Qwen/Qwen3-4B-GGUF",
+      "revision": "bc640142c66e1fdd12af0bd68f40445458f3869b",
+      "size": 2497280256,
+      "hash_type": "sha256",
+      "digest": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
+    },
+    {
+      "group": "editor",
+      "name": "Local editorial review",
+      "path": "editor-qwen/LICENSE",
+      "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/LICENSE",
+      "source": "Qwen/Qwen3-4B-GGUF",
+      "revision": "bc640142c66e1fdd12af0bd68f40445458f3869b",
+      "size": 11544,
+      "hash_type": "git_blob_sha1",
+      "digest": "6f9739bb281a3d2ade8fb5f6dd6dde597a739c80"
+    },
+    {
+      "group": "retention",
+      "name": "Audio event detection",
+      "path": "retention/yamnet/yamnet.onnx",
+      "url": "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741c2f0bdc6d7e6db24b5fddda23347dbafd/yamnet.onnx",
+      "source": "audiomagic/yamnet-onnx",
+      "revision": "f25b741c2f0bdc6d7e6db24b5fddda23347dbafd",
+      "size": 16093355,
+      "hash_type": "sha256",
+      "digest": "d3835ffbbd4a1bb3e777f0ca217b5007907f5171dd5d17c4236b95b2af8f908e"
+    },
+    {
+      "group": "retention",
+      "name": "Audio event detection",
+      "path": "retention/yamnet/yamnet_class_map.csv",
+      "url": "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741c2f0bdc6d7e6db24b5fddda23347dbafd/yamnet_class_map.csv",
+      "source": "audiomagic/yamnet-onnx",
+      "revision": "f25b741c2f0bdc6d7e6db24b5fddda23347dbafd",
+      "size": 14096,
+      "hash_type": "git_blob_sha1",
+      "digest": "9c07d818a6fba1a31c2950732c2fe49a16687c5a"
+    },
+    {
+      "group": "retention",
+      "name": "Audio event detection",
+      "path": "retention/yamnet/LICENSE",
+      "url": "https://huggingface.co/audiomagic/yamnet-onnx/resolve/f25b741c2f0bdc6d7e6db24b5fddda23347dbafd/LICENSE",
+      "source": "audiomagic/yamnet-onnx",
+      "revision": "f25b741c2f0bdc6d7e6db24b5fddda23347dbafd",
+      "size": 11358,
+      "hash_type": "git_blob_sha1",
+      "digest": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+    },
+    {
+      "group": "retention",
+      "name": "Visual gameplay checks",
+      "path": "retention/clip/vision_model_quantized.onnx",
+      "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a/onnx/vision_model_quantized.onnx",
+      "source": "Xenova/clip-vit-base-patch32",
+      "revision": "d15189d7028b43f1d3e65039190477f6af591c2a",
+      "size": 89117001,
+      "hash_type": "sha256",
+      "digest": "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299"
+    },
+    {
+      "group": "retention",
+      "name": "Visual gameplay checks",
+      "path": "retention/clip/text_model_quantized.onnx",
+      "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a/onnx/text_model_quantized.onnx",
+      "source": "Xenova/clip-vit-base-patch32",
+      "revision": "d15189d7028b43f1d3e65039190477f6af591c2a",
+      "size": 64504507,
+      "hash_type": "sha256",
+      "digest": "73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a"
+    },
+    {
+      "group": "retention",
+      "name": "Visual gameplay checks",
+      "path": "retention/clip/tokenizer.json",
+      "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a/tokenizer.json",
+      "source": "Xenova/clip-vit-base-patch32",
+      "revision": "d15189d7028b43f1d3e65039190477f6af591c2a",
+      "size": 2224119,
+      "hash_type": "git_blob_sha1",
+      "digest": "bc1f77d20440541dd073ebae6f6c401087c7d34e"
+    },
+    {
+      "group": "retention",
+      "name": "Visual gameplay checks",
+      "path": "retention/clip/preprocessor_config.json",
+      "url": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a/preprocessor_config.json",
+      "source": "Xenova/clip-vit-base-patch32",
+      "revision": "d15189d7028b43f1d3e65039190477f6af591c2a",
+      "size": 520,
+      "hash_type": "git_blob_sha1",
+      "digest": "e0675735fd0052745f2f7b7291e4aa7859389998"
+    },
+    {
+      "group": "editor",
+      "name": "Local editorial engine",
+      "path": "downloads/llama-b10809-bin-win-cpu-x64.zip",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10809/llama-b10809-bin-win-cpu-x64.zip",
+      "source": "ggml-org/llama.cpp",
+      "revision": "b10809",
+      "size": 18407457,
+      "hash_type": "sha256",
+      "digest": "9df3158ed228a641a4b127942d7f459f24c9e13f04682659d05c00c80099b6b5",
+      "extract_to": "llama-b10809",
+      "required": [
+        "llama-server.exe",
+        "llama.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu-x64.dll"
+      ]
+    }
+  ]
+}

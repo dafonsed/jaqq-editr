@@ -1,7 +1,14 @@
 from automatic_review import QApplication,AutomaticWindow,configure_app,ROOT
 from PySide6.QtTest import QTest
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
 app=QApplication([]);configure_app(app)
-w=AutomaticWindow();w.show();app.processEvents()
+# Startup must never load or rewrite the user's last recording/preferences.
+# Screenshots below still go to the established verification output directory.
+with tempfile.TemporaryDirectory() as fixture_root, patch('automatic_review.ROOT',Path(fixture_root)):
+    w=AutomaticWindow()
+w.show();app.processEvents()
 assert w.create.text()=='Create automatic cut'
 w.stage.setText('Creating your edit');w.status.setText('Checking cut edges against your microphone waveform…')
 app.processEvents();w.grab().save(str(ROOT/'analysis/ui-working.png'))

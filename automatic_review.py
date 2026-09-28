@@ -1,14 +1,37 @@
-"""One-action automatic cut UI. No repeated-take review cards."""
+"""Existing editor launcher with cloud proposals and an explicit local mode."""
 import sys,os,json,traceback,hashlib
 from pathlib import Path
 from app_paths import ROOT,add_dependencies
 add_dependencies()
-from PySide6.QtCore import QThread,Signal,QTimer,Qt,QPropertyAnimation,QEasingCurve
+from PySide6.QtCore import QThread,Signal,QTimer,Qt,QPropertyAnimation,QEasingCurve,QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QFileDialog,QComboBox,QFrame,QGraphicsOpacityEffect,QSizeGrip
 from cut_review import configure_app
 from review_core import save_json
 from automatic_cut import probe,plan,send,check_resolve,Cancelled
 from retention_dial import RetentionDial
+from model_assets import status as model_status,ensure_models,SetupCancelled
+
+def log_worker_error(filename,detail):
+    secret=os.environ.get('OPENAI_API_KEY','')
+    if secret:detail=detail.replace(secret,'[REDACTED]')
+    try:
+        (ROOT/'analysis').mkdir(parents=True,exist_ok=True)
+        (ROOT/'analysis'/filename).write_text(detail,encoding='utf-8')
+    except OSError:
+        # A full/read-only disk must not suppress the visible error signal.
+        if sys.stderr:print(detail,file=sys.stderr,flush=True)
+
+class ModelSetupWorker(QThread):
+    progress=Signal(str);ready=Signal(dict);failed=Signal(str)
+    def __init__(self,groups=None):
+        super().__init__();self.groups=groups
+    def run(self):
+        try:self.ready.emit(ensure_models(self.progress.emit,self.isInterruptionRequested,groups=self.groups))
+        except SetupCancelled as error:self.failed.emit(str(error))
+        except Exception:
+            detail=traceback.format_exc();log_worker_error('model-setup-error.log',detail)
+            self.failed.emit(detail.splitlines()[-1])
 
 class SoftLabel(QLabel):
     """Interruptible fades: frequent worker messages never queue animations."""
@@ -53,18 +76,24 @@ class WindowHeader(QWidget):
 
 class Worker(QThread):
     progress=Signal(str);ready=Signal(dict);failed=Signal(str)
-    def __init__(self,source,mic,intensity='balanced'):
-        super().__init__();self.source=source;self.mic=mic;self.intensity=intensity
+    def __init__(self,source,mic,intensity='balanced',backend='local'):
+        super().__init__();self.source=source;self.mic=mic;self.intensity=intensity;self.backend=backend
     def run(self):
         try:
-            check_resolve()
+            if self.backend=='openai':
+                from ai_pipeline import plan_ai
+                result=plan_ai(self.source,self.mic,self.progress.emit,self.isInterruptionRequested,intensity=self.intensity)
+                if self.isInterruptionRequested():raise Cancelled()
+                self.ready.emit(result)
+                return
             result=plan(self.source,self.mic,self.progress.emit,self.isInterruptionRequested,intensity=self.intensity)
             if self.isInterruptionRequested():raise Cancelled()
             self.ready.emit(send(result,self.progress.emit))
         except Cancelled:self.failed.emit('Stopped before sending the cut to Resolve.')
         except Exception:
-            detail=traceback.format_exc();(ROOT/'analysis').mkdir(parents=True,exist_ok=True)
-            (ROOT/'analysis'/'automatic-error.log').write_text(detail,encoding='utf-8')
+            detail=traceback.format_exc();log_worker_error('automatic-error.log',detail)
+            secret=os.environ.get('OPENAI_API_KEY','')
+            if secret:detail=detail.replace(secret,'[REDACTED]')
             self.failed.emit(detail.splitlines()[-1])
 
 class AutomaticWindow(QMainWindow):
@@ -97,7 +126,8 @@ class AutomaticWindow(QMainWindow):
             QProgressBar { border: none; background: #292e40; border-radius: 2px; max-height: 4px; }
             QProgressBar::chunk { background: #8a9aee; border-radius: 2px; }
         ''')
-        self.source=None;self.worker=None;self.result=None
+        self.source=None;self.worker=None;self.result=None;self.setup_worker=None;self.review_dialog=None
+        self.models_ready=False;self.close_after_setup=False
         self.setStyleSheet(self.styleSheet()+'''
             QWidget#canvas { background: qradialgradient(cx:0.16,cy:0.06,radius:1.15,fx:0.16,fy:0.06,stop:0 #43405b,stop:0.32 #2b2b42,stop:0.72 #202233,stop:1 #171a28); }
             QLabel#title { font-size: 16px; font-weight: 600; letter-spacing: 0px; }
@@ -151,9 +181,17 @@ class AutomaticWindow(QMainWindow):
         self.file=SoftLabel('Choose a recording to get started.');self.file.setWordWrap(True);self.file.setTextFormat(Qt.PlainText);self.file.setMinimumHeight(42);source_card.addWidget(self.file)
         self.voice_label=QLabel('Commentary track');self.voice_label.setObjectName('caption');source_card.addWidget(self.voice_label)
         self.voice=QComboBox();self.voice.setAccessibleName('Commentary audio track');source_card.addWidget(self.voice)
+        backend_row=QHBoxLayout();backend_row.addWidget(QLabel('Decisions'))
+        self.backend=QComboBox();self.backend.setAccessibleName('Decision backend')
+        self.backend.addItem('OpenAI · review before export','openai')
+        self.backend.addItem('Local · original automatic editor','local')
+        self.default_backend='openai' if os.environ.get('OPENAI_API_KEY','').strip() else 'local'
+        self.backend.setCurrentIndex(self.backend.findData(self.default_backend))
+        self.backend.setToolTip('OpenAI sends commentary audio and transcript context to the API. Local uses only installed models.')
+        backend_row.addWidget(self.backend,1);source_card.addLayout(backend_row)
         pacing=QHBoxLayout();pacing.addWidget(QLabel('Pacing'))
         self.intensity=QComboBox();self.intensity.setAccessibleName('Editing intensity')
-        for label,value in [('Natural','natural'),('Balanced','balanced'),('Tight','tight')]:self.intensity.addItem(label,value)
+        for label,value in [('Natural','natural'),('Balanced','balanced'),('Aggressive','aggressive')]:self.intensity.addItem(label,value)
         self.intensity.setCurrentIndex(1)
         self.intensity.setToolTip('Controls pause lengths and speech handles. Meaning and uncertainty protections apply in every mode.')
         pacing.addWidget(self.intensity,1);source_card.addLayout(pacing)
@@ -162,19 +200,70 @@ class AutomaticWindow(QMainWindow):
         progress_card=QVBoxLayout();progress_card.setContentsMargins(0,0,0,0);progress_card.setSpacing(3);source_card.addLayout(progress_card)
         self.stage=SoftLabel('Ready when you are');self.stage.setObjectName('section');progress_card.addWidget(self.stage)
         self.status=SoftLabel('Open a project in Resolve to begin.');self.status.setObjectName('caption');self.status.setTextFormat(Qt.PlainText);self.status.setWordWrap(True);self.status.setMinimumHeight(44);progress_card.addWidget(self.status)
+        self.setup_button=SoftButton('Set up local AI');self.setup_button.setObjectName('secondary')
+        self.setup_button.clicked.connect(self.start_model_setup);source_card.addWidget(self.setup_button)
         source_card.addWidget(self.create)
         footer=QHBoxLayout();footer.addSpacing(16)
         self.details=QLabel('DaVinci Resolve');self.details.setAlignment(Qt.AlignCenter);self.details.setStyleSheet('color: #9ca7b4; font-size: 11px;');footer.addWidget(self.details,1)
+        self.details.linkActivated.connect(self.open_export_folder)
         grip=QSizeGrip(self);grip.setFixedSize(16,16);footer.addWidget(grip);layout.addLayout(footer)
         self.voice.hide();self.voice_label.hide()
         try:
             preferences=json.loads((ROOT/'analysis/simple-preferences.json').read_text())
-            index=self.intensity.findData(preferences.get('intensity','balanced'))
+            preferred=preferences.get('intensity','balanced')
+            index=self.intensity.findData('aggressive' if preferred=='tight' else preferred)
             if index>=0:self.intensity.setCurrentIndex(index)
+            preferred_backend=preferences.get('backend',self.default_backend)
+            if preferred_backend=='openai' and self.default_backend=='local':
+                preferred_backend='local'
+            backend_index=self.backend.findData(preferred_backend)
+            if backend_index>=0:self.backend.setCurrentIndex(backend_index)
             last=Path(preferences['source'])
             if last.is_file():self.load(last)
         except (OSError,ValueError,KeyError):pass
+        self.backend.currentIndexChanged.connect(self.refresh_models)
         if '--source' in sys.argv:self.load(Path(sys.argv[sys.argv.index('--source')+1]))
+        self.refresh_models()
+    def refresh_models(self):
+        cloud=self.backend.currentData()=='openai'
+        readiness=model_status(groups=['speech']) if cloud else model_status()
+        self.models_ready=readiness['ready'] and (not cloud or bool(os.environ.get('OPENAI_API_KEY','').strip()))
+        self.setup_button.setVisible(not readiness['ready'])
+        self.setup_button.setText('Set up speech timing' if cloud else 'Set up local AI')
+        self.create.setEnabled(self.source is not None and self.models_ready)
+        if not readiness['ready']:
+            self.stage.setText('One-time setup needed')
+            self.status.setText(f"Download {readiness['bytes_missing']/1e9:.1f} GB of {'speech timing' if cloud else 'local AI'} files to enable editing.")
+        elif cloud and not self.models_ready:
+            self.stage.setText('API key needed')
+            self.status.setText('Set OPENAI_API_KEY in this computer’s environment, then restart. OpenAI mode uploads commentary audio and transcript context.')
+        elif cloud:
+            self.stage.setText('Ready to analyze')
+            self.status.setText('OpenAI will receive commentary audio and transcript context. Review and restore cuts before exporting.')
+        else:
+            self.stage.setText('Ready');self.status.setText('Local processing. Open a Resolve project before starting.')
+        return dict(readiness,ready=self.models_ready)
+    def start_model_setup(self):
+        if self.setup_worker and self.setup_worker.isRunning():return
+        self.setup_button.setEnabled(False);self.create.setEnabled(False);self.choose.setEnabled(False)
+        self.stage.setText('Setting up local AI');self.status.setText('Checking downloaded files…');self.dial.set_busy(True)
+        self.backend.setEnabled(False)
+        self.setup_worker=ModelSetupWorker(groups=['speech'] if self.backend.currentData()=='openai' else None)
+        self.setup_worker.progress.connect(self.status.setText)
+        self.setup_worker.ready.connect(self.model_setup_done)
+        self.setup_worker.failed.connect(self.model_setup_failed)
+        self.setup_worker.finished.connect(self.model_setup_finished);self.setup_worker.start()
+    def model_setup_done(self,result):
+        self.models_ready=result['ready'] and (self.backend.currentData()!='openai' or bool(os.environ.get('OPENAI_API_KEY','').strip()));self.setup_button.hide()
+        self.stage.setText('Ready' if self.models_ready else 'API key needed')
+        self.status.setText('Speech timing is installed. Set OPENAI_API_KEY and restart to use OpenAI.' if not self.models_ready else 'Models are installed. Choose a recording to begin.')
+    def model_setup_failed(self,message):
+        self.models_ready=False;self.stage.setText('Setup paused');self.status.setText(message)
+        self.setup_button.setText('Retry setup');self.setup_button.show()
+    def model_setup_finished(self):
+        self.dial.set_busy(False);self.setup_button.setEnabled(True);self.choose.setEnabled(True);self.backend.setEnabled(True)
+        self.create.setEnabled(self.source is not None and self.models_ready)
+        if self.close_after_setup:self.close()
     def pick(self):
         f,_=QFileDialog.getOpenFileName(self,'Choose your full recording',str(self.source.parent if self.source else ROOT),'Video recordings (*.mp4 *.mov *.mkv *.m4v)')
         if f:self.load(Path(f))
@@ -189,19 +278,32 @@ class AutomaticWindow(QMainWindow):
             voice=names[self.voice.currentIndex()]
             self.dial.set_duration(duration)
             self.file.setText(f'{path.name}\n{voice}')
-            self.stage.setText('Ready');self.choose.setText('Change');self.create.setEnabled(True);self.status.setText('Open a Resolve project before starting.')
-            save_json(ROOT/'analysis/simple-preferences.json',dict(source=str(path),intensity=self.intensity.currentData()))
-        except Exception as e:self.status.setText('Could not open that recording: '+str(e));self.create.setEnabled(False)
+            self.stage.setText('Ready');self.choose.setText('Change');self.status.setText('Open a Resolve project before starting.')
+            self.refresh_models()
+            save_json(ROOT/'analysis/simple-preferences.json',dict(source=str(path),intensity=self.intensity.currentData(),backend=self.backend.currentData()))
+        except Exception as e:self.source=None;self.status.setText('Could not open that recording: '+str(e));self.create.setEnabled(False)
     def begin(self):
         if self.worker and self.worker.isRunning():return
+        if self.setup_worker and self.setup_worker.isRunning():return
         if self.source is None:return
-        save_json(ROOT/'analysis/simple-preferences.json',dict(source=str(self.source),intensity=self.intensity.currentData()))
-        self.result=None;self.choose.setEnabled(False);self.voice.setEnabled(False);self.intensity.setEnabled(False);self.create.setEnabled(False)
+        if not self.refresh_models()['ready']:return
+        save_json(ROOT/'analysis/simple-preferences.json',dict(source=str(self.source),intensity=self.intensity.currentData(),backend=self.backend.currentData()))
+        self.result=None;self.choose.setEnabled(False);self.voice.setEnabled(False);self.intensity.setEnabled(False);self.backend.setEnabled(False);self.create.setEnabled(False)
         self.dial.set_busy(True)
-        self.create.setText('Creating your cut…');self.stage.setText('Creating your edit');self.status.setText('Checking Resolve…')
-        self.worker=Worker(self.source,self.voice.currentIndex(),self.intensity.currentData());self.worker.progress.connect(self.status.setText)
+        self.create.setText('Creating your cut…');self.stage.setText('Creating your edit');self.status.setText('Preparing edit proposals…' if self.backend.currentData()=='openai' else 'Starting local analysis…')
+        intensity=self.intensity.currentData()
+        if self.backend.currentData()=='local' and intensity=='aggressive':intensity='tight'
+        self.worker=Worker(self.source,self.voice.currentIndex(),intensity,self.backend.currentData());self.worker.progress.connect(self.status.setText)
         self.worker.ready.connect(self.done);self.worker.failed.connect(self.failed);self.worker.finished.connect(self.finished);self.worker.start()
     def done(self,result):
+        if result.get('ai_plan') and not result.get('timeline_verified') and not result.get('manual_import_required'):
+            from ai_review_ui import ReviewDialog
+            self.result=result;self.stage.setText('Your proposals are ready')
+            self.dial.set_busy(False);self.dial.set_duration(result['edited_duration'],'Proposed length')
+            self.status.setText('Review proposed cuts, compare the audio, and restore or adjust them before exporting to Resolve.')
+            self.review_dialog=ReviewDialog(result,self)
+            self.review_dialog.exported.connect(self.done);self.review_dialog.show()
+            return
         self.stage.setText('Your draft is ready')
         self.result=result;d=round(result['edited_duration']);o=round(result['duration'])
         self.dial.set_busy(False);self.dial.set_duration(d,'Draft length')
@@ -210,34 +312,77 @@ class AutomaticWindow(QMainWindow):
         self.status.setText(f'{o//60}:{o%60:02} → {d//60}:{d%60:02}  ·  {result["clips"]} clips\nReview in Resolve. {flag_count} checks flagged. Render and listening review still required.')
         if result.get('comparison',{}).get('identical_frame_ranges'):
             self.status.setText(self.status.text()+'\nFresh analysis produced the same cut decisions.')
+        if result.get('manual_import_required'):
+            self.stage.setText('Draft saved — import into Resolve')
+            instruction=(f"In Resolve, choose File → Import → Timeline and select {Path(result['import_xml']).name}." if result.get('import_xml') else 'Follow OPEN IN RESOLVE.txt in the draft folder to import the edit.')
+            self.status.setText(f'{o//60}:{o%60:02} → {d//60}:{d%60:02}  ·  {result["clips"]} clips\n{instruction} Open the draft folder below.')
+        if result.get('folder'):
+            self.details.setText('<a style="color:#c6ddfa" href="draft">Open draft files</a>')
+    def open_export_folder(self,*args):
+        if self.result and self.result.get('folder'):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.result['folder']))
     def failed(self,message):self.stage.setText('Needs your attention');self.status.setText(message)
     def finished(self):
         self.dial.set_busy(False)
-        self.choose.setEnabled(True);self.voice.setEnabled(True);self.intensity.setEnabled(True);self.create.setText('Create automatic cut');self.create.setEnabled(True)
+        self.choose.setEnabled(True);self.voice.setEnabled(True);self.intensity.setEnabled(True);self.backend.setEnabled(True);self.create.setText('Create automatic cut');self.create.setEnabled(self.source is not None and self.models_ready)
         if '--auto-check' in sys.argv:
             save_json(ROOT/'analysis/automatic-ui-check.json',dict(success=bool(self.result),result=self.result,status=self.status.text(),button=self.create.text()))
             def finish_check():
                 self.grab().save(str(ROOT/'analysis/automatic-ui-check.png'));QApplication.instance().quit()
             QTimer.singleShot(500,finish_check)
     def closeEvent(self,event):
+        if self.review_dialog and self.review_dialog.busy():
+            event.ignore();self.status.setText('Finish the active review render or Resolve import before closing.');return
+        if self.setup_worker and self.setup_worker.isRunning():
+            event.ignore();self.close_after_setup=True;self.setup_worker.requestInterruption()
+            self.status.setText('Stopping setup safely… Downloaded files will be reused next time.');return
         if self.worker and self.worker.isRunning():
             event.ignore();self.status.setText('The cut is still being created. Keep this window open until it finishes.');return
         super().closeEvent(event)
 
 def main():
     from PySide6.QtNetwork import QLocalServer,QLocalSocket
+    from launch_status import report_startup
     app=QApplication(sys.argv);configure_app(app)
     checking='--launch-check' in sys.argv or '--auto-check' in sys.argv
     name='retention-cut-'+hashlib.sha1(str(ROOT).encode()).hexdigest()[:12]
     if checking:name+='-'+str(os.getpid())
     socket=QLocalSocket();socket.connectToServer(name)
-    if socket.waitForConnected(400):socket.write(b'show');socket.flush();socket.waitForBytesWritten(400);return 0
-    server=QLocalServer();server.listen(name);window=AutomaticWindow();window.show()
+    if socket.waitForConnected(400):
+        socket.write(b'show');socket.flush()
+        # A connected pipe alone is not a successful launch. The existing GUI
+        # must process the request, restore its window, and acknowledge it.
+        if not socket.bytesAvailable() and not socket.waitForReadyRead(3000):
+            raise RuntimeError('The running editor did not respond. See analysis/application.log.')
+        try:ack=json.loads(bytes(socket.readAll()).decode('utf-8'))
+        except (ValueError,UnicodeError) as error:
+            raise RuntimeError('The running editor returned an invalid startup response.') from error
+        if not ack.get('visible') or ack.get('state')!='ready':
+            raise RuntimeError('The running editor could not restore its window.')
+        report_startup('existing',visible=True,existing_pid=ack.get('pid'))
+        return 0
+    server=QLocalServer()
+    if not server.listen(name):
+        raise RuntimeError('Could not create the editor startup service: '+server.errorString())
+    window=AutomaticWindow();window.show()
     def reveal():
         client=server.nextPendingConnection()
-        if client:client.disconnectFromServer();client.deleteLater()
+        if not client:return
         window.showNormal();window.raise_();window.activateWindow()
+        client.disconnected.connect(client.deleteLater)
+        client.write(json.dumps(dict(state='ready',pid=os.getpid(),visible=window.isVisible())).encode('utf-8'))
+        client.flush();client.disconnectFromServer()
     server.newConnection.connect(reveal)
+    # Execute after the event loop has processed the initial window events.
+    def startup_ready():
+        snapshot=os.environ.get('RETENTION_STARTUP_SNAPSHOT')
+        if snapshot:
+            destination=Path(snapshot);destination.parent.mkdir(parents=True,exist_ok=True)
+            if not window.grab().save(str(destination)):
+                report_startup('error',error='Could not save the requested startup verification snapshot')
+                return
+        report_startup('ready',visible=window.isVisible(),title=window.windowTitle())
+    QTimer.singleShot(300,startup_ready)
     if '--launch-check' in sys.argv:
         def check():
             save_json(ROOT/'analysis/automatic-launch-check.json',dict(visible=window.isVisible(),title=window.windowTitle(),button=window.create.text(),old_review_buttons=False,executable=sys.executable))

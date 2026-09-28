@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "scope": "Representative scripted speech; synthesized locally for transport/render checks, not a substitute for human speech evaluation.",
+  "cases": [
+    {"id":"stutter", "parts":["I was", "I was going to show you the new settings."], "gaps":[0.32], "expected":"I was going to show you the new settings.", "category":"repeated failed start"},
+    {"id":"restart", "parts":["What you need to", "What I recommend is changing this setting."], "gaps":[0.35], "expected":"What I recommend is changing this setting.", "category":"sentence restart"},
+    {"id":"correction", "parts":["Click the blue", "sorry, the green button."], "gaps":[0.3], "expected":"Click the green button.", "category":"explicit correction"},
+    {"id":"retake", "parts":["This mouse feels comfortable during long games.", "This mouse feels comfortable even after several hours of gaming."], "gaps":[1.3], "expected":"This mouse feels comfortable even after several hours of gaming.", "category":"full sentence retake"},
+    {"id":"filler", "parts":["Open the settings, um, and select the green button."], "gaps":[], "expected":"Open the settings, and select the green button.", "category":"optional conversational filler"},
+    {"id":"long_pause", "parts":["Open the settings.", "Then select the green button."], "gaps":[3.8], "expected":"Open the settings. Then select the green button.", "category":"dead air"},
+    {"id":"intentional_pause", "parts":["Wait for the reveal.", "There it is!"], "gaps":[2.3], "protect_gap":true, "expected":"Wait for the reveal. There it is!", "category":"intentional reveal timing"},
+    {"id":"ambiguous", "parts":["Do not enable that option.", "Actually, enable the other option after saving."], "gaps":[0.5], "expected":"Do not enable that option. Actually, enable the other option after saving.", "category":"ambiguous correction with negation"},
+    {"id":"quoted_repetition", "parts":["He said, I was, I was going to show you. That is the exact quote."], "gaps":[], "expected":"He said, I was, I was going to show you. That is the exact quote.", "category":"quoted deliberate repetition"}
+  ]
+}

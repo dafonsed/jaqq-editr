@@ -1,6 +1,6 @@
 # JAQQ Editor
 
-Local speech and pacing editor that creates a new draft timeline in DaVinci Resolve.
+Speech and pacing editor with local analysis, optional OpenAI edit proposals, and draft timeline export for DaVinci Resolve.
 
 ## Start on Windows
 
@@ -12,7 +12,11 @@ The first launch creates `.venv` in this folder, installs the packages listed in
 
 Do not launch individual `.py` files from Explorer. The START command prepares the environment they need.
 
-The runtime installer installs **Python packages only**. Speech, semantic and gameplay model weights are separate `.model-cache` assets and are not included in this repository. Restore the model folder from the existing app before processing recordings. See [the audit report](AUDIT_AND_FIX_REPORT.md) for the required models and verified limitations. Installing the Python runtime does not verify a real edit or a Resolve render.
+The editor defaults to local analysis when no OpenAI API key is configured. On a fresh download, click **Set up local AI** to download approximately **3.8 GB** of speech, semantic, editorial and gameplay models. Progress appears in the window; interrupted downloads can be retried. Files are pinned and checksum-verified before use. Local analysis keeps recordings on your computer. Models are cached in `.model-cache` and are not stored in Git. Once setup completes, choose a recording, select its commentary track, and create the cut.
+
+OpenAI mode requires `OPENAI_API_KEY` and sends the selected transcription audio and transcript/context for model proposals. It opens a review window to compare, restore, and adjust proposed cuts before exporting. Configuration, data flow, evaluation results, and remaining limitations are documented in [AI_DECISION_SYSTEM.md](AI_DECISION_SYSTEM.md). Live OpenAI quality has not been validated in this checkout because no API key was available.
+
+If Resolve's external scripting API is available, open a project before exporting for direct timeline creation. Otherwise the editor saves a draft folder: click **Open draft files**, then in Resolve choose **File → Import → Timeline** and select **Automatic cut.xml**. Source media must remain accessible. The XML fallback was imported into Resolve and exported back for frame-range verification. Export creates an editable draft; it does not render a finished video.
 
 ## Startup troubleshooting
 
@@ -32,6 +36,6 @@ Run these commands from the source folder:
 .\.venv\Scripts\python.exe run_offline_checks.py
 ```
 
-Setup diagnostics are in `analysis/runtime-setup.log`; GUI errors are in `analysis/launch-error.log`. To select another Python installation, set `RETENTION_PYTHON` to its executable path before running the START command.
+Setup diagnostics are in `analysis/runtime-setup.log`; normal GUI output and native crash diagnostics are in `analysis/application.log`, and Python startup errors are in `analysis/launch-error.log`. The normal launcher waits for the visible window to acknowledge startup; opening it again restores the existing window. To select another Python installation, set `RETENTION_PYTHON` to its executable path before running the START command.
 
 The source launcher uses its isolated `.venv` rather than an old `.runtime-deps` folder, so stale native packages cannot override the checked installation.

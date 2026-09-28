@@ -192,6 +192,8 @@ class LauncherSetupTests(unittest.TestCase):
     def test_check_cli_on_clean_source_is_read_only_from_unrelated_directory(self):
         script = self.root / "bootstrap_runtime.py"
         shutil.copyfile(Path(bootstrap.__file__), script)
+        shutil.copyfile(Path(bootstrap.__file__).with_name('launch_status.py'),
+                        self.root / 'launch_status.py')
         before = set(self.root.rglob("*"))
         environment = dict(os.environ)
         environment.pop("PYTHONPATH", None)
@@ -211,6 +213,8 @@ class LauncherSetupTests(unittest.TestCase):
     def run_fixture_launcher(self, application):
         script = self.root / "launch_cut_review.py"
         shutil.copyfile(Path(bootstrap.__file__).with_name(script.name), script)
+        shutil.copyfile(Path(bootstrap.__file__).with_name('launch_status.py'),
+                        self.root / 'launch_status.py')
         (self.root / "automatic_review.py").write_text(application, encoding="utf-8")
         return subprocess.run([sys.executable, "-I", "-B", str(script), "--launch-check"],
                               cwd=self.temp.name, capture_output=True, text=True,
@@ -228,6 +232,50 @@ class LauncherSetupTests(unittest.TestCase):
         logfile = self.root / "analysis" / "launch-error.log"
         self.assertTrue(logfile.is_file())
         self.assertIn("ModuleNotFoundError", logfile.read_text(encoding="utf-8"))
+
+    def test_normal_bootstrap_rejects_native_style_exit_and_keeps_stderr(self):
+        # An immediate native-style exit bypasses Python exception handling.
+        # The bootstrap must fail instead of returning success after Popen.
+        (self.root / 'launch_cut_review.py').write_text(
+            "import os, sys\nos.write(2, b'native startup failure fixture\\n')\nos._exit(37)\n",
+            encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'exited during startup'):
+            bootstrap.start_application(sys.executable, self.root, timeout=5)
+        log = (self.root / 'analysis' / 'application.log').read_text(encoding='utf-8')
+        self.assertIn('native startup failure fixture', log)
+
+    def test_normal_bootstrap_requires_gui_ack_even_when_parent_stays_alive(self):
+        class AliveParent:
+            def poll(self):
+                return None
+        with self.assertRaisesRegex(RuntimeError, 'did not confirm a visible window'):
+            bootstrap.wait_for_startup(AliveParent(), self.root / 'absent-status.json',
+                                       self.root / 'application.log', timeout=.05)
+
+    def test_normal_bootstrap_rejects_exit_after_ready_signal(self):
+        class DeadProcess:
+            def poll(self):
+                return 37
+        status = self.root / 'status.json'
+        status.write_text(json.dumps(dict(state='ready', visible=True)), encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'exited during startup'):
+            bootstrap.wait_for_startup(DeadProcess(), status, self.root / 'application.log',
+                                       timeout=.1, settle_seconds=0)
+
+    def test_existing_instance_requires_visible_acknowledgement(self):
+        class ExitedProcess:
+            def poll(self):
+                return 0
+        status = self.root / 'status.json'
+        status.write_text(json.dumps(dict(state='existing', visible=True, existing_pid=123)),
+                          encoding='utf-8')
+        report = bootstrap.wait_for_startup(ExitedProcess(), status,
+                                           self.root / 'application.log', timeout=.1)
+        self.assertEqual(report['existing_pid'], 123)
+        status.write_text(json.dumps(dict(state='existing', visible=False)), encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'exited during startup'):
+            bootstrap.wait_for_startup(ExitedProcess(), status, self.root / 'application.log',
+                                       timeout=.1)
 
     def test_managed_venv_packages_win_over_legacy_runtime_folder(self):
         import app_paths

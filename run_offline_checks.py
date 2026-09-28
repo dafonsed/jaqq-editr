@@ -19,6 +19,11 @@ SCRIPTS=[
     'test_dialogue_upgrade.py','test_edit_integrity.py','test_speech_recheck.py',
     'test_fresh_analysis.py','test_retention_only.py','test_ordered_export.py',
     'test_action_sequences.py','test_ui_states.py','test_launcher_setup.py',
+    'test_model_setup.py','test_model_setup_ui.py',
+    'test_editor_request_lifecycle.py',
+    'test_resolve_fallback.py','test_resolve_xml.py',
+    'test_openai_editor.py','test_ai_transcription.py','test_ai_decisions.py',
+    'test_ai_pipeline.py','test_ai_review_ui.py','test_ai_review_render.py',
 ]
 
 

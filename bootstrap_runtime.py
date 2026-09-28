@@ -6,8 +6,13 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+import time
+import uuid
 
 ROOT=Path(__file__).resolve().parent
+sys.path.insert(0,str(ROOT))
+from launch_status import STATUS_ENV
+
 PROBES={
     'PySide6': 'from PySide6.QtCore import QTimer; from PySide6.QtWidgets import QApplication; from PySide6.QtMultimedia import QMediaPlayer; from PySide6.QtNetwork import QLocalServer',
     'av': 'import av; assert callable(av.open)',
@@ -102,6 +107,58 @@ def ensure_runtime(root, *, runner=subprocess.run, progress=print, force=False):
     return executable
 
 
+def wait_for_startup(process, status_path, log_path, *, timeout=45, settle_seconds=1):
+    """Require GUI acknowledgement; Popen succeeding does not mean an app opened."""
+    deadline = time.monotonic() + timeout
+    ready_at = None
+    report = None
+    while time.monotonic() < deadline:
+        if status_path.is_file():
+            try:
+                report = json.loads(status_path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                report = None
+            if report and report.get('state') == 'error':
+                raise RuntimeError(f"{report.get('error', 'The editor failed during startup')}. Details: {log_path}")
+        exit_code = process.poll()
+        if (report and report.get('state') == 'existing' and report.get('visible')
+                and exit_code == 0):
+            return report
+        if exit_code is not None:
+            raise RuntimeError(f'The editor exited during startup (exit {exit_code}). Details: {log_path}')
+        if report and report.get('state') == 'ready' and report.get('visible'):
+            if ready_at is None:
+                ready_at = time.monotonic()
+            if time.monotonic() - ready_at >= settle_seconds:
+                return report
+        time.sleep(.05)
+    raise RuntimeError(f'The editor did not confirm a visible window within {timeout:g} seconds. Details: {log_path}')
+
+
+def start_application(executable, root, application_args=(), *, timeout=45):
+    """Start the ordinary windowed application with logs and a readiness check."""
+    root = Path(root).resolve()
+    executable = Path(executable)
+    windowed = executable.with_name('pythonw.exe')
+    if os.name == 'nt' and windowed.is_file():
+        executable = windowed
+    analysis = root / 'analysis'
+    analysis.mkdir(parents=True, exist_ok=True)
+    status = analysis / ('startup-' + uuid.uuid4().hex + '.json')
+    log = analysis / 'application.log'
+    environment = clean_environment()
+    environment[STATUS_ENV] = str(status)
+    with log.open('a', encoding='utf-8') as output:
+        output.write('\n=== Editor startup ' + time.strftime('%Y-%m-%d %H:%M:%S') + ' ===\n')
+        output.flush()
+        process = subprocess.Popen([str(executable), str(root / 'launch_cut_review.py'),
+                                    *application_args], cwd=root, env=environment,
+                                   stdin=subprocess.DEVNULL, stdout=output,
+                                   stderr=subprocess.STDOUT, close_fds=True,
+                                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        return wait_for_startup(process, status, log, timeout=timeout)
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     mode=parser.add_mutually_exclusive_group()
@@ -126,10 +183,7 @@ def main(argv=None):
                 env=clean_environment(),timeout=60)
             if result.returncode:raise RuntimeError('The GUI launch check failed; see analysis/launch-error.log.')
             return 0
-        windowed=executable.with_name('pythonw.exe')
-        if os.name=='nt' and windowed.is_file():launch[0]=str(windowed)
-        subprocess.Popen(launch+application_args,cwd=ROOT,env=clean_environment(),
-            creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        start_application(executable, ROOT, application_args)
         return 0
     except (RuntimeError,OSError,subprocess.TimeoutExpired) as error:
         print(f'Could not start the editor: {error}',file=sys.stderr,flush=True)

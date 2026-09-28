@@ -180,19 +180,77 @@ def plan(source,mic,progress=lambda s:None,cancel=lambda:False,*,intensity='bala
 
 FUSCRIPT=Path(r'C:\Program Files\Blackmagic Design\DaVinci Resolve\fuscript.exe')
 
+
+class ResolveUnavailable(ValueError):
+    """Read-only preflight could not establish an external Resolve connection."""
+    def __init__(self,message,reason='api_unavailable'):
+        super().__init__(message);self.reason=reason
+
+
 def check_resolve():
     p=ROOT/'analysis'/'auto-resolve-preflight.lua'
     p.parent.mkdir(parents=True,exist_ok=True)
-    if not FUSCRIPT.is_file():raise ValueError('DaVinci Resolve scripting is unavailable on this computer.')
-    p.write_text('local r=bmd.scriptapp("Resolve"); assert(r,"Open Resolve first"); local p=r:GetProjectManager():GetCurrentProject(); assert(p,"Open a project"); print("AUTO_READY")',encoding='utf-8')
+    if not FUSCRIPT.is_file():
+        raise ResolveUnavailable('DaVinci Resolve scripting is not installed. The draft can still be imported manually.',
+                                 'missing_runtime')
+    p.write_text('''local ok,r=pcall(function() return bmd.scriptapp("Resolve") end)
+if not ok or not r then print("AUTO_API_UNAVAILABLE"); return end
+local manager=r:GetProjectManager()
+local project=manager and manager:GetCurrentProject()
+if not project then print("AUTO_NO_PROJECT"); return end
+print("AUTO_READY")
+''',encoding='utf-8')
     try:
-        r=subprocess.run([str(FUSCRIPT),'-l','lua',str(p)],capture_output=True,text=True,timeout=15,creationflags=subprocess.CREATE_NO_WINDOW)
+        r=subprocess.run([str(FUSCRIPT),'-l','lua',str(p)],capture_output=True,text=True,timeout=15,
+                         creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     except subprocess.TimeoutExpired:
-        raise ValueError('Resolve is not responding yet. Bring Resolve to the front, close any dialogs, then click Create automatic cut again.') from None
-    if 'AUTO_READY' not in r.stdout:raise ValueError('Open a project in DaVinci Resolve, then click Create automatic cut again.')
+        raise ResolveUnavailable('Resolve did not answer the connection check. The saved draft can be imported manually.',
+                                 'timeout') from None
+    except OSError as error:
+        raise ResolveUnavailable('Resolve scripting could not start. The saved draft can be imported manually.',
+                                 'missing_runtime') from error
+    output=(r.stdout or '')+'\n'+(r.stderr or '')
+    (p.parent/'auto-resolve-preflight.log').write_text(output,encoding='utf-8')
+    if r.returncode==0 and 'AUTO_READY' in (r.stdout or ''):return True
+    if 'AUTO_NO_PROJECT' in output:
+        raise ResolveUnavailable('Resolve is connected, but no project is open. Open a project and import the saved draft.',
+                                 'no_project')
+    if 'AUTO_API_UNAVAILABLE' in output:
+        raise ResolveUnavailable("Resolve's external scripting API is unavailable. Use the saved draft's manual import instructions; external control depends on the Resolve edition and scripting preferences.",
+                                 'api_unavailable')
+    raise ResolveUnavailable('Resolve did not confirm an external connection. The saved draft can be imported manually. Details: '+str(p.parent/'auto-resolve-preflight.log'),
+                             'probe_failed')
+
+
+def manual_import_details(folder,reason):
+    folder=Path(folder)
+    script=(folder/'create_resolve_draft.lua').as_posix()
+    equals='=='
+    while ']'+equals+']' in script:equals+='='
+    command='dofile(['+equals+'['+script+']'+equals+'])'
+    xml=folder/'Automatic cut.xml'
+    xml_instructions=('Open a project in DaVinci Resolve. Choose File > Import > Timeline, '
+                      'then select Automatic cut.xml from this folder.\n\n'
+                      'Alternative Lua console import:\n') if xml.is_file() else ''
+    instructions=('Your edit is saved. Automatic import was unavailable: '+str(reason)+'\n\n'
+                  +xml_instructions+
+                  'Open a project in DaVinci Resolve. Choose Workspace > Console, select Lua, and paste:\n\n'
+                  +command+'\n\n'
+                  'The script creates a new RETENTION timeline and keeps the source recording unchanged. '
+                  'Review the imported audio tracks and cut boundaries before rendering.\n'
+                  'This saved draft has not been verified in Resolve or rendered.\n')
+    instructions_file=folder/'OPEN IN RESOLVE.txt'
+    instructions_file.write_text(instructions,encoding='utf-8')
+    return dict(manual_import_required=True,manual_import_reason=getattr(reason,'reason','api_unavailable'),
+                import_command=command,import_instructions=instructions,
+                import_instructions_file=str(instructions_file),import_script=str(folder/'create_resolve_draft.lua'),
+                import_xml=str(xml) if xml.is_file() else None)
 
 def send(result,progress=lambda s:None):
     """Export only selected picture and original linked audio."""
+    if result.get('ai_plan'):
+        from ai_pipeline import validate_for_export
+        result=validate_for_export(result)
     from review_media import audio_sidecars
     from cut_integrity import validate
     validate(result['kept'],result['duration'],result['fps'])
@@ -218,11 +276,13 @@ def send(result,progress=lambda s:None):
         draft_note='Retention cut: original picture and linked voice/game audio. Review dialogue joins and action context.')
     save_json(folder/'automatic-plan.json',result)
     save_json(folder/'edit-manifest.json',result.get('edit_manifest',{}))
+    if result.get('ai_plan'):
+        from ai_pipeline import write_ai_artifacts
+        write_ai_artifacts(folder,result)
     if result.get('script_review'):
         from script_review import readable
         save_json(folder/'script-review.json',result['script_review'])
         (folder/'selected-script.txt').write_text(readable(result['script_review']),encoding='utf-8')
-    progress('Opening your retention cut in Resolve…')
     script=folder/'create_resolve_draft.lua'
     backup=(folder/'Automatic cut.drt').as_posix()
     with script.open('a',encoding='utf-8') as f:
@@ -234,15 +294,39 @@ def send(result,progress=lambda s:None):
         f.write('assert(resolve:GetProjectManager():SaveProject(),"Cut created, but project save failed")\n')
         f.write('assert(project:GetCurrentTimeline():GetName()==timeline:GetName(),"Completed cut is not active")\n')
         f.write('print("AUTO_VERIFIED "..#videoItems.." "..expectedDuration.." "..#audioClips)\n')
-    r=subprocess.run([str(FUSCRIPT),'-l','lua',str(script)],capture_output=True,text=True,timeout=120,creationflags=subprocess.CREATE_NO_WINDOW)
+    result=dict(result,folder=str(folder),timeline=None,clips=len(result['kept']),
+        edited_duration=sum(round(b*result['fps'])-round(a*result['fps']) for a,b in result['kept'])/result['fps'],
+        timeline_verified=False,render_verified=False,verified=False)
+    progress('Your draft is saved. Checking whether Resolve can import it automatically…')
+    try:
+        check_resolve()
+    except ResolveUnavailable as error:
+        from resolve_xml import write_timeline
+        from review_core import build_frame_map
+        try:
+            write_timeline(folder/'Automatic cut.xml',result['source'],result['duration'],result['fps'],
+                build_frame_map(result['kept'],result['duration'],result['fps']),audio,
+                name='RETENTION - '+Path(result['source']).stem[:35])
+        except (OSError,ValueError) as xml_error:
+            # The generated Lua remains available for media/rates unsupported
+            # by the XML interchange format. Never advertise a missing XML.
+            result['xml_export_error']=str(xml_error)
+        result.update(manual_import_details(folder,error))
+        save_json(folder/'automatic-plan.json',result)
+        save_json(ROOT/'analysis'/'last-automatic-cut.json',result)
+        progress('Draft saved. Open the export folder for Resolve import instructions.')
+        return result
+    progress('Opening your retention cut in Resolve…')
+    # After this command starts, failure can mean a partially created timeline.
+    # Never disguise it as a safe manual fallback or silently retry the import.
+    r=subprocess.run([str(FUSCRIPT),'-l','lua',str(script)],capture_output=True,text=True,timeout=120,
+                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     output=r.stdout+'\n'+r.stderr
     (folder/'resolve-output.txt').write_text(output,encoding='utf-8')
-    if 'AUTO_VERIFIED ' not in output:
+    if r.returncode!=0 or 'AUTO_VERIFIED ' not in output or 'CUT_REVIEW_OK ' not in output:
         raise ValueError('Resolve did not confirm the import. Check for a RETENTION timeline before retrying. Details: '+str(folder/'resolve-output.txt'))
     name=output.split('CUT_REVIEW_OK ',1)[1].splitlines()[0]
-    result=dict(result,folder=str(folder),timeline=name,clips=len(result['kept']),
-        edited_duration=sum(round(b*result['fps'])-round(a*result['fps']) for a,b in result['kept'])/result['fps'],
-        timeline_verified=True,render_verified=False,verified=False)
+    result=dict(result,timeline=name,manual_import_required=False,timeline_verified=True)
     review_file=folder/'review.json'
     if review_file.is_file():
         exported=json.loads(review_file.read_text(encoding='utf-8'))

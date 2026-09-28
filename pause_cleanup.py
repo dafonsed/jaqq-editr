@@ -19,6 +19,9 @@ def pause_settings(intensity='balanced'):
         'tight': (.06, .09, .20, .30, .50, .16, .04, .7),
     }
     intensity = str(intensity).lower()
+    # Keep the historical preset identifier compatible with saved local plans.
+    if intensity == 'aggressive':
+        intensity = 'tight'
     if intensity not in presets:
         raise ValueError('Unknown pause intensity: ' + intensity)
     settings = dict(zip(('leading', 'trailing', 'hesitation', 'sentence', 'topic',
