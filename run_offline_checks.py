@@ -18,12 +18,13 @@ SCRIPTS=[
     'test_script_review.py','test_automatic_cut.py','test_speech_edges.py',
     'test_dialogue_upgrade.py','test_edit_integrity.py','test_speech_recheck.py',
     'test_fresh_analysis.py','test_retention_only.py','test_ordered_export.py',
-    'test_action_sequences.py','test_ui_states.py',
+    'test_action_sequences.py','test_ui_states.py','test_launcher_setup.py',
 ]
 
 
 def main():
-    environment=dict(os.environ,PYTHONPATH=str(ROOT/'.runtime-deps')+os.pathsep+str(ROOT),
+    dependencies=[] if Path(sys.prefix).resolve()==ROOT/'.venv' else [str(ROOT/'.runtime-deps')]
+    environment=dict(os.environ,PYTHONPATH=os.pathsep.join(dependencies+[str(ROOT)]),
                      QT_QPA_PLATFORM='offscreen',QT_LOGGING_RULES='qt.multimedia.*=false')
     rows=[]
     for filename in SCRIPTS:

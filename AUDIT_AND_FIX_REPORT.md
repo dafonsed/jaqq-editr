@@ -30,7 +30,7 @@ The supplied Downloads folder is unchanged. The pasted audit brief was used as t
 
 | Stage | Active implementation and behavior |
 |---|---|
-| Launch/UI | `START CUT REVIEW.cmd` → `launch_cut_review.py` → `automatic_review.AutomaticWindow`/`Worker`; selected microphone and Natural/Balanced/Tight pacing reach `automatic_cut.plan` |
+| Launch/UI | `START CUT REVIEW.cmd` → `bootstrap_runtime.py` → `launch_cut_review.py` → `automatic_review.AutomaticWindow`/`Worker`; isolated runtime setup precedes UI imports; selected microphone and Natural/Balanced/Tight pacing reach `automatic_cut.plan` |
 | Ingest | `automatic_cut.probe` uses video duration/rate and audio stream metadata; source size/mtime identity is checked across analysis and before export |
 | Audio preprocessing | `analyze_speech.extract`: selected track → 16 kHz mono PCM16 analysis WAV, aligned to video start; original media is unchanged |
 | Transcription | Existing local faster-whisper model (preferred `speech-small.en`), CPU int8, word timestamps, beam 5, VAD; verbatim prompt and previous-text context requested. This is not a guarantee that ASR preserves stutters |
@@ -116,17 +116,17 @@ These are editorial improvements. There is no audience-retention measurement or 
 
 ## Running and reviewing the source
 
-`START CUT REVIEW.cmd` now runs this source, so source changes cannot be hidden by the old dated executable. It uses `RETENTION_PYTHON`, a local `.venv`, the available Codex Python runtime, or Python on PATH. Existing separately packaged applications have not been rebuilt or installed.
+`START CUT REVIEW.cmd` now runs this source, so source changes cannot be hidden by the old dated executable. It uses `RETENTION_PYTHON`, a local `.venv`, the available Codex Python runtime, or Python on PATH to bootstrap a project-local `.venv`. First-run installation uses `requirements-runtime.txt` and checks native imports before starting the GUI. It does not rely on an ignored `.runtime-deps` directory being present in a GitHub download. Existing separately packaged applications have not been rebuilt or installed.
 
-The source download omitted `.model-cache`, `.runtime-deps` and private `analysis`/media assets. Test dependencies were installed into this working copy's `.runtime-deps`. The speech/embedding/NLI/Qwen/YAMNet/CLIP model assets were not downloaded. Restore the matching model assets from the existing application and ensure `faster_whisper` is available before attempting real processing. No new model or inference architecture was added.
+The source download omitted `.model-cache`, `.runtime-deps` and private `analysis`/media assets. Initial testing used local `.runtime-deps`; the repaired launcher installs the complete Python runtime, including `faster_whisper`, into `.venv`. The speech/embedding/NLI/Qwen/YAMNet/CLIP model assets were not downloaded. Restore the matching model assets from the existing application before attempting real processing. No new model or inference architecture was added.
 
 Run the explicit offline suite with a Python interpreter that can access this copy's dependencies:
 
 ```powershell
-python run_offline_checks.py
+.\.venv\Scripts\python.exe run_offline_checks.py
 ```
 
-Do not indiscriminately execute all historical `test_*.py` or deployment scripts: several operate on live Resolve projects or private example paths. `run_offline_checks.py` lists 18 reviewed offline scripts and writes `analysis/verification/offline-checks.json`; it does not invoke Resolve or download models.
+Do not indiscriminately execute all historical `test_*.py` or deployment scripts: several operate on live Resolve projects or private example paths. `run_offline_checks.py` lists 19 reviewed offline scripts and writes `analysis/verification/offline-checks.json`; it does not invoke Resolve or download models. Startup coverage includes failed native imports, pip/setup failures, isolated dependency precedence, paths containing spaces, and preservation of GUI failure exit codes. Actual first-run installation and GUI startup were also checked from a clean source-only copy with no `.runtime-deps` or pre-existing `.venv`.
 
 Each new real export writes `automatic-plan.json`, `edit-manifest.json`, `review.json`, `script-review.json`, `selected-script.txt`, Resolve assertion output and a DRT backup. They expose removed/retained source spans, reasons/evidence, uncertainty, actual output coordinates and separate verification states. Original media and existing timelines are preserved.
 

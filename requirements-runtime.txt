@@ -1,0 +1,9 @@
+# Runtime packages for the source launcher (tested with 64-bit Python 3.12).
+# Model weights are separate; this file does not download any models.
+PySide6==6.11.2
+av==18.1.0
+numpy==2.5.3
+Pillow==12.3.0
+onnxruntime==1.30.0
+tokenizers==0.23.2
+faster-whisper==1.2.1
